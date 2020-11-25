@@ -92,13 +92,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xz-utils
 
 # Install protoc
-ADD https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip /tmp/
-RUN unzip /tmp/protoc-${PROTOC_VERSION}-linux-x86_64.zip
-RUN mv /tmp/bin/protoc ${OUTDIR}/usr/bin
+RUN set -eux; \
+    \
+    case $(uname -m) in \
+        x86_64) export PROTOC_ZIP=protoc-${PROTOC_VERSION}-linux-x86_64.zip;; \
+        aarch64) export PROTOC_ZIP=protoc-${PROTOC_VERSION}-linux-aarch_64.zip;; \
+        *) echo "unsupported architecture"; exit 1 ;; \
+    esac; \
+    \
+    wget -O /tmp/${PROTOC_ZIP} https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/${PROTOC_ZIP}; \
+    unzip /tmp/${PROTOC_ZIP}; \
+    mv /tmp/bin/protoc ${OUTDIR}/usr/bin
 
 # Install gh
-ADD https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.deb /tmp/
-RUN dpkg -i /tmp/gh_${GH_VERSION}_linux_amd64.deb
+ARG TARGETARCH
+ADD https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${TARGETARCH}.deb /tmp/
+RUN dpkg -i /tmp/gh_${GH_VERSION}_linux_${TARGETARCH}.deb
 RUN mv /usr/bin/gh ${OUTDIR}/usr/bin
 
 # Build and install a bunch of Go tools
@@ -175,9 +184,10 @@ RUN git clone --depth 1 https://github.com/kubernetes-sigs/boskos --branch maste
   cd .. && rm -rf boskos
 
 # Compress the Go tools and put them in their final location
-ADD https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-amd64_linux.tar.xz /tmp
-RUN tar -xJf upx-${UPX_VERSION}-amd64_linux.tar.xz -C /tmp
-RUN mv /tmp/upx-${UPX_VERSION}-amd64_linux/upx /usr/bin
+ARG TARGETARCH
+ADD https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-${TARGETARCH}_linux.tar.xz /tmp
+RUN tar -xJf upx-${UPX_VERSION}-${TARGETARCH}_linux.tar.xz -C /tmp
+RUN mv /tmp/upx-${UPX_VERSION}-${TARGETARCH}_linux/upx /usr/bin
 RUN upx --lzma /tmp/go/bin/*
 RUN mv /tmp/go/bin/* ${OUTDIR}/usr/bin
 
@@ -189,8 +199,8 @@ ADD https://raw.githubusercontent.com/istio/tools/master/cmd/gen-release-notes/t
 RUN chmod -R 555 ${OUTDIR}/usr/share/gen-release-notes
 
 # ShellCheck linter
-ADD https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz /tmp
-RUN tar -xJf /tmp/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz -C /tmp
+RUN wget -O /tmp/shellcheck-${SHELLCHECK_VERSION}.linux.$(uname -m).tar.xz https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.$(uname -m).tar.xz
+RUN tar -xJf /tmp/shellcheck-${SHELLCHECK_VERSION}.linux.$(uname -m).tar.xz -C /tmp
 RUN mv /tmp/shellcheck-${SHELLCHECK_VERSION}/shellcheck ${OUTDIR}/usr/bin
 
 # Hadolint linter
@@ -198,33 +208,42 @@ ADD https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/h
 RUN chmod 555 ${OUTDIR}/usr/bin/hadolint
 
 # Hugo static site generator
-ADD https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_${HUGO_VERSION}_Linux-64bit.tar.gz /tmp
-RUN tar -xzvf /tmp/hugo_${HUGO_VERSION}_Linux-64bit.tar.gz -C /tmp
-RUN mv /tmp/hugo ${OUTDIR}/usr/bin
+RUN set -eux; \
+    \
+    case $(uname -m) in \
+        x86_64) export HUGO_TAR=hugo_${HUGO_VERSION}_Linux-64bit.tar.gz;; \
+        aarch64) export HUGO_TAR=hugo_${HUGO_VERSION}_Linux-ARM64.tar.gz;; \
+        *) echo "unsupported architecture"; exit 1 ;; \
+    esac; \
+    \
+    wget -O /tmp/${HUGO_TAR} https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/${HUGO_TAR}; \
+    tar -xzvf /tmp/${HUGO_TAR} -C /tmp; \
+    mv /tmp/hugo ${OUTDIR}/usr/bin
 
 # Helm version 3
-ADD https://get.helm.sh/helm-${HELM3_VERSION}-linux-amd64.tar.gz /tmp
+ARG TARGETARCH
+ADD https://get.helm.sh/helm-${HELM3_VERSION}-linux-${TARGETARCH}.tar.gz /tmp
 RUN mkdir /tmp/helm3
-RUN tar -xf /tmp/helm-${HELM3_VERSION}-linux-amd64.tar.gz -C /tmp/helm3
-RUN cp /tmp/helm3/linux-amd64/helm ${OUTDIR}/usr/bin/helm3
-RUN mv /tmp/helm3/linux-amd64/helm ${OUTDIR}/usr/bin/helm
+RUN tar -xf /tmp/helm-${HELM3_VERSION}-linux-${TARGETARCH}.tar.gz -C /tmp/helm3
+RUN cp /tmp/helm3/linux-${TARGETARCH}/helm ${OUTDIR}/usr/bin/helm3
+RUN mv /tmp/helm3/linux-${TARGETARCH}/helm ${OUTDIR}/usr/bin/helm
 
 # yq doesn't support go modules, so install the binary instead
-ADD https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64 /tmp
-RUN mv /tmp/yq_linux_amd64 ${OUTDIR}/usr/bin/yq
+ARG TARGETARCH
+ADD https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${TARGETARCH} /tmp
+RUN mv /tmp/yq_linux_${TARGETARCH} ${OUTDIR}/usr/bin/yq
 RUN chmod 555 ${OUTDIR}/usr/bin/yq
 
 # Kubectl
-ADD https://storage.googleapis.com/kubernetes-release/release/v${KUBECTL_VERSION}/bin/linux/amd64/kubectl ${OUTDIR}/usr/bin/kubectl
+ARG TARGETARCH
+ADD https://storage.googleapis.com/kubernetes-release/release/v${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl ${OUTDIR}/usr/bin/kubectl
 RUN chmod 555 ${OUTDIR}/usr/bin/kubectl
 
 # GCR docker credential helper
+# TODO need to upgrade version to 2.0.4 for arm64
 ADD https://github.com/GoogleCloudPlatform/docker-credential-gcr/releases/download/v${GCR_AUTH_VERSION}/docker-credential-gcr_linux_amd64-${GCR_AUTH_VERSION}.tar.gz /tmp
 RUN tar -xzf /tmp/docker-credential-gcr_linux_amd64-${GCR_AUTH_VERSION}.tar.gz -C /tmp
 RUN mv /tmp/docker-credential-gcr ${OUTDIR}/usr/bin
-
-ADD https://github.com/bufbuild/buf/releases/download/${BUF_VERSION}/buf-Linux-x86_64 ${OUTDIR}/usr/bin/buf
-RUN chmod 555 ${OUTDIR}/usr/bin/buf
 
 # Install su-exec which is a tool that operates like sudo without the overhead
 ADD https://github.com/ncopa/su-exec/archive/v${SU_EXEC_VERSION}.tar.gz /tmp
@@ -234,10 +253,16 @@ RUN make
 RUN cp -a su-exec ${OUTDIR}/usr/bin
 
 # Install gcloud command line tool
-
+# TODO no arm64 https://cloud.google.com/sdk/docs/downloads-versioned-archives
 ADD https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-${GCLOUD_VERSION}-linux-x86_64.tar.gz /tmp
-RUN tar -xzvf "/tmp/google-cloud-sdk-${GCLOUD_VERSION}-linux-x86_64.tar.gz" -C "${OUTDIR}/usr/local" && \
-    ${OUTDIR}/usr/local/google-cloud-sdk/bin/gcloud components install beta kpt --quiet && \
+RUN tar -xzvf /tmp/google-cloud-sdk-${GCLOUD_VERSION}-linux-x86_64.tar.gz -C ${OUTDIR}/usr/local
+# Install gcloud beta components
+RUN set -eux; \
+    \
+    case $(uname -m) in \
+        x86_64) ${OUTDIR}/usr/local/google-cloud-sdk/bin/gcloud components install beta kpt --quiet;; \
+        *) echo "skip";; \
+    esac; \
     rm -rf /usr/local/google-cloud-sdk/.install/.backup
 
 # Cleanup stuff we don't need in the final image
@@ -269,8 +294,19 @@ ENV SVGSTORE_CLI_VERSION=v1.3.1
 ENV TSLINT_VERSION=v5.20.0
 ENV TYPESCRIPT_VERSION=v3.7.2
 
-ADD https://nodejs.org/download/release/v${NODEJS_VERSION}/node-v${NODEJS_VERSION}-linux-x64.tar.gz /tmp
-RUN tar -xzf /tmp/node-v${NODEJS_VERSION}-linux-x64.tar.gz --strip-components=1 -C /usr/local
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget ca-certificates
+
+RUN set -eux; \
+    \
+    case $(uname -m) in \
+        x86_64) export NODEJS_TAR=node-v${NODEJS_VERSION}-linux-x64.tar.gz;; \
+        aarch64) export NODEJS_TAR=node-v${NODEJS_VERSION}-linux-arm64.tar.gz;; \
+        *) echo "unsupported architecture"; exit 1 ;; \
+    esac; \
+    \
+    wget -O /tmp/${NODEJS_TAR} https://nodejs.org/download/release/v${NODEJS_VERSION}/${NODEJS_TAR}; \
+    tar -xzf /tmp/${NODEJS_TAR} --strip-components=1 -C /usr/local
 
 ADD https://nodejs.org/download/release/v${NODEJS_VERSION}/node-v${NODEJS_VERSION}-headers.tar.gz /tmp
 RUN tar -xzf /tmp/node-v${NODEJS_VERSION}-headers.tar.gz --strip-components=1 -C /usr/local
@@ -326,11 +362,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev
 
-RUN add-apt-repository -y ppa:brightbox/ruby-ng-experimental
+# RUN add-apt-repository -y ppa:brightbox/ruby-ng-experimental
+# TODO revert when arm64 version ready https://groups.google.com/g/brightbox-ruby-ubuntu-packaging/c/8JLWIsW_DWc
+# ruby2.6 not in ubuntu officals
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ruby2.6 \
-    ruby2.6-dev
+    ruby2.7 \
+    ruby2.7-dev
 
 # Install istio.io verification tools
 RUN gem install --no-wrappers --no-document mdl -v ${MDL_VERSION}
@@ -422,7 +460,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Docker including docker-ce, docker-ce-cli, and containerd.io
 ADD https://download.docker.com/linux/ubuntu/gpg /tmp/docker-key
 RUN apt-key add /tmp/docker-key
-RUN add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable"
+ARG TARGETARCH
+RUN add-apt-repository "deb [arch=${TARGETARCH}] https://download.docker.com/linux/ubuntu focal stable"
 RUN apt-get update
 RUN apt-get -y install --no-install-recommends docker-ce="${DOCKER_VERSION}" docker-ce-cli="${DOCKER_VERSION}" containerd.io="${CONTAINERD_VERSION}"
 
@@ -534,7 +573,7 @@ ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]
 # Clang+LLVM
 ##############
 
-FROM ubuntu:xenial as clang_context
+FROM ubuntu:focal as clang_context
 
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -544,27 +583,66 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
-ENV LLVM_VERSION=11.0.1
-ENV LLVM_TARGET=x86_64-linux-gnu-ubuntu-16.04
+# 11.0.0 is the version support ubuntu-20.04 & aarch64
+# 11.0.1 missing support ubuntu-20.04
+ENV LLVM_VERSION=11.0.0
 ENV LLVM_BASE_URL=https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}
-ENV LLVM_ARCHIVE=clang+llvm-${LLVM_VERSION}-${LLVM_TARGET}
-ENV LLVM_URL=${LLVM_BASE_URL}/${LLVM_ARCHIVE}.tar.xz
 ENV LLVM_DIRECTORY=/usr/lib/llvm
 
-RUN wget ${LLVM_URL}
-RUN tar -xJf ${LLVM_ARCHIVE}.tar.xz -C /tmp
-RUN mkdir -p ${LLVM_DIRECTORY}
-RUN mv /tmp/${LLVM_ARCHIVE}/* ${LLVM_DIRECTORY}/
+RUN set -eux; \
+    \
+    case $(uname -m) in \
+        x86_64) export LLVM_ARCHIVE=clang+llvm-${LLVM_VERSION}-x86_64-linux-gnu-ubuntu-20.04;; \
+        aarch64) export LLVM_ARCHIVE=clang+llvm-${LLVM_VERSION}-aarch64-linux-gnu;; \
+        *) echo "unsupported architecture"; exit 1 ;; \
+    esac; \
+    \
+    wget ${LLVM_BASE_URL}/${LLVM_ARCHIVE}.tar.xz; \
+    tar -xJf ${LLVM_ARCHIVE}.tar.xz -C /tmp; \
+    mkdir -p ${LLVM_DIRECTORY}; \
+    mv /tmp/${LLVM_ARCHIVE}/* ${LLVM_DIRECTORY}/
+
+###########
+# GN
+###########
+
+FROM debian:buster AS gn_context
+
+RUN set -eux; \
+    \
+    apt-get update; \
+    apt-get install -qqy --no-install-recommends \
+        ca-certificates git \
+        clang python ninja-build \
+        libclang-dev libc++-dev \
+        ; \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp
+
+RUN set -eux; \
+    \
+    git clone https://gn.googlesource.com/gn; \
+    cd gn; \
+    git checkout 501b49a3; \
+    python build/gen.py; \
+    ninja -v -C out; \
+    out/gn_unittests; \
+    mkdir -p /gn; \
+    cp /tmp/gn/out/gn /gn/gn; \
+    /gn/gn --version;
 
 ###########
 # Bazel
 ###########
 
-FROM ubuntu:xenial as bazel_context
+FROM ubuntu:focal as bazel_context
 
-ENV BAZELISK_VERSION="v1.0"
+ARG TARGETARCH
+
+ENV BAZELISK_VERSION="v1.9.0"
 ENV BAZELISK_BASE_URL="https://github.com/bazelbuild/bazelisk/releases/download"
-ENV BAZELISK_BIN="bazelisk-linux-amd64"
+ENV BAZELISK_BIN="bazelisk-linux-${TARGETARCH}"
 ENV BAZELISK_URL="${BAZELISK_BASE_URL}/${BAZELISK_VERSION}/${BAZELISK_BIN}"
 
 # hadolint ignore=DL3008
@@ -582,7 +660,7 @@ RUN mv ${BAZELISK_BIN} /usr/local/bin/bazel
 # Final image for proxy
 ########################
 
-FROM ubuntu:xenial
+FROM ubuntu:focal
 
 # Version from build arguments
 ARG VERSION
@@ -592,7 +670,7 @@ LABEL "io.istio.repo"="https://github.com/istio/tools"
 LABEL "io.istio.version"="${VERSION}"
 
 # Docker
-ENV DOCKER_VERSION=5:20.10.6~3-0~ubuntu-xenial
+ENV DOCKER_VERSION=5:20.10.6~3-0~ubuntu-focal
 ENV CONTAINERD_VERSION=1.4.3-1
 
 # General
@@ -646,7 +724,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Docker including docker-ce, docker-ce-cli, and containerd.io
 ADD https://download.docker.com/linux/ubuntu/gpg /tmp/docker-key
 RUN apt-key add /tmp/docker-key
-RUN add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu xenial stable"
+ARG TARGETARCH
+RUN add-apt-repository "deb [arch=${TARGETARCH}] https://download.docker.com/linux/ubuntu focal stable"
 RUN apt-get update && apt-get -y install --no-install-recommends \
     docker-ce="${DOCKER_VERSION}" \
     docker-ce-cli="${DOCKER_VERSION}" \
