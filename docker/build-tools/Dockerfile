@@ -240,10 +240,19 @@ ADD https://storage.googleapis.com/kubernetes-release/release/v${KUBECTL_VERSION
 RUN chmod 555 ${OUTDIR}/usr/bin/kubectl
 
 # GCR docker credential helper
-# TODO need to upgrade version to 2.0.4 for arm64
 ADD https://github.com/GoogleCloudPlatform/docker-credential-gcr/releases/download/v${GCR_AUTH_VERSION}/docker-credential-gcr_linux_amd64-${GCR_AUTH_VERSION}.tar.gz /tmp
-RUN tar -xzf /tmp/docker-credential-gcr_linux_amd64-${GCR_AUTH_VERSION}.tar.gz -C /tmp
-RUN mv /tmp/docker-credential-gcr ${OUTDIR}/usr/bin
+
+RUN set -eux; \
+    \
+    case $(uname -m) in \
+        x86_64) export GCR_TAR=docker-credential-gcr_linux_amd64-${GCR_AUTH_VERSION}.tar.gz ;; \
+        aarch64) export GCR_TAR=docker-credential-gcr_linux_arm64-${GCR_AUTH_VERSION}.tar.gz ;; \
+        *) echo "unsupported architecture"; exit 1 ;; \
+    esac; \
+    \
+    wget -O /tmp/${GCR_TAR} https://github.com/GoogleCloudPlatform/docker-credential-gcr/releases/download/v${GCR_AUTH_VERSION}/${GCR_TAR}; \
+    tar -xzvf /tmp/${GCR_TAR} -C /tmp; \
+    mv /tmp/docker-credential-gcr ${OUTDIR}/usr/bin
 
 # Install su-exec which is a tool that operates like sudo without the overhead
 ADD https://github.com/ncopa/su-exec/archive/v${SU_EXEC_VERSION}.tar.gz /tmp
