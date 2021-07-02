@@ -259,9 +259,11 @@ RUN set -eux; \
     case $(uname -m) in \
         x86_64) \
             export GCLOUD_TAR_FILE=google-cloud-sdk-${GCLOUD_VERSION}-linux-x86_64.tar.gz; \
+            export GCLOUD_COMPONENTS="beta kpt" \
             ;; \
         aarch64) \
             export GCLOUD_TAR_FILE=google-cloud-sdk-${GCLOUD_VERSION}-linux-arm.tar.gz; \
+            export GCLOUD_COMPONENTS="beta" \
             ;; \
         *) \
             echo "unsuport arch"; \
@@ -270,8 +272,8 @@ RUN set -eux; \
     esac; \
     \
     wget "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/${GCLOUD_TAR_FILE}"; \
-    tar -xzvf ./${GCLOUD_TAR_FILE} -C ${OUTDIR}/usr/local && rm ${GCLOUD_TAR_FILE}; \
-    ${OUTDIR}/usr/local/google-cloud-sdk/bin/gcloud components install beta kpt --quiet; \
+    tar -xzf ./${GCLOUD_TAR_FILE} -C ${OUTDIR}/usr/local && rm ${GCLOUD_TAR_FILE}; \
+    ${OUTDIR}/usr/local/google-cloud-sdk/bin/gcloud components install ${GCLOUD_COMPONENTS} --quiet; \
     rm -rf /usr/local/google-cloud-sdk/.install/.backup
 
 # Cleanup stuff we don't need in the final image
